@@ -5,9 +5,13 @@ from typing import Optional
 import yfinance as yf
 from datetime import datetime
 from app.baskets import (
-    BasketCreate, baskets_db, create_basket, get_basket_performance,
+    BasketCreate, create_basket, get_basket_performance,
     get_basket_history, get_optimization_analysis, predict_prices,
     IBEX_STOCKS, INTERNATIONAL_STOCKS,
+)
+from app.database import (
+    init_db, db_get_all_baskets, db_get_basket, db_delete_basket,
+    db_save_alert, db_get_all_alerts, db_delete_alert, db_next_alert_id,
 )
 
 app = FastAPI(title="Devin Bursatil API", version="1.0.0")
@@ -21,10 +25,11 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# In-memory storage for portfolio and alerts
+# Initialize database on startup
+init_db()
+
+# In-memory storage for portfolio (not persisted)
 portfolio_db: dict[str, dict] = {}
-alerts_db: dict[str, dict] = {}
-alert_counter = 0
 
 
 class PortfolioItem(BaseModel):
@@ -266,7 +271,7 @@ async def remove_from_portfolio(position_id: str):
 async def get_alerts():
     """Get all configured alerts with current status."""
     results = []
-    for aid, alert in alerts_db.items():
+    for aid, alert in db_get_all_alerts():
         try:
             ticker = yf.Ticker(alert["symbol"])
             hist = ticker.history(period="1d")
@@ -297,10 +302,6 @@ async def get_alerts():
 @app.post("/api/alerts")
 async def create_alert(config: AlertConfig):
     """Create a price alert."""
-    global alert_counter
-    alert_counter += 1
-    aid = f"alert_{alert_counter}_{config.symbol}"
-
     if not config.name:
         try:
             ticker = yf.Ticker(config.symbol)
@@ -308,22 +309,23 @@ async def create_alert(config: AlertConfig):
         except Exception:
             config.name = config.symbol
 
-    alerts_db[aid] = {
+    aid = db_next_alert_id(config.symbol.upper())
+    alert_data = {
         "symbol": config.symbol.upper(),
         "target_price": config.target_price,
         "condition": config.condition,
         "name": config.name,
         "created_at": datetime.now().isoformat(),
     }
+    db_save_alert(aid, alert_data)
     return {"id": aid, "message": f"Alert created for {config.symbol} {config.condition} ${config.target_price}"}
 
 
 @app.delete("/api/alerts/{alert_id}")
 async def delete_alert(alert_id: str):
     """Delete an alert."""
-    if alert_id not in alerts_db:
+    if not db_delete_alert(alert_id):
         raise HTTPException(status_code=404, detail="Alert not found")
-    del alerts_db[alert_id]
     return {"message": "Alert deleted"}
 
 
@@ -372,9 +374,9 @@ async def api_create_basket(config: BasketCreate):
 async def list_baskets():
     """List all baskets."""
     results = []
-    for bid, basket in baskets_db.items():
+    for basket in db_get_all_baskets():
         results.append({
-            "id": bid,
+            "id": basket["id"],
             "name": basket["name"],
             "market": basket["market"],
             "strategy": basket["strategy"],
@@ -409,9 +411,8 @@ async def api_basket_history(
 @app.delete("/api/baskets/{basket_id}")
 async def delete_basket(basket_id: str):
     """Delete a basket."""
-    if basket_id not in baskets_db:
+    if not db_delete_basket(basket_id):
         raise HTTPException(status_code=404, detail="Basket not found")
-    del baskets_db[basket_id]
     return {"message": "Basket deleted"}
 
 

@@ -21,9 +21,10 @@ def _get_linear_regression():
     return _LR
 
 
-# In-memory storage for baskets
-baskets_db: dict[str, dict] = {}
-basket_counter = 0
+from app.database import (
+    db_next_basket_id, db_save_basket, db_get_all_baskets,
+    db_get_basket, db_delete_basket,
+)
 
 # Predefined stock universes
 IBEX_STOCKS = {
@@ -192,9 +193,7 @@ def predict_prices(symbol: str, days: int = 30) -> dict:
 
 def create_basket(config: BasketCreate) -> dict:
     """Create a virtual investment basket."""
-    global basket_counter
-    basket_counter += 1
-    basket_id = f"basket_{basket_counter}"
+    basket_id = db_next_basket_id()
 
     symbols = config.symbols
     returns_data, valid_symbols = get_historical_returns(symbols)
@@ -239,16 +238,15 @@ def create_basket(config: BasketCreate) -> dict:
         "created_at": datetime.now().isoformat(),
     }
 
-    baskets_db[basket_id] = basket
+    db_save_basket(basket)
     return basket
 
 
 def get_basket_performance(basket_id: str) -> dict:
     """Calculate current performance of a basket."""
-    if basket_id not in baskets_db:
+    basket = db_get_basket(basket_id)
+    if basket is None:
         return {"error": "Basket not found"}
-
-    basket = baskets_db[basket_id]
     total_current = 0.0
     total_cost = 0.0
     position_details = []
@@ -300,10 +298,9 @@ def get_basket_performance(basket_id: str) -> dict:
 
 def get_basket_history(basket_id: str, period: str = "1mo") -> dict:
     """Get historical performance of a basket over time."""
-    if basket_id not in baskets_db:
+    basket = db_get_basket(basket_id)
+    if basket is None:
         return {"error": "Basket not found"}
-
-    basket = baskets_db[basket_id]
     import pandas as pd
 
     all_data = {}
