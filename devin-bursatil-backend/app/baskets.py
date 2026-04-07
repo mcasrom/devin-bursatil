@@ -2,14 +2,23 @@
 Virtual investment baskets module.
 Each basket starts with 200 EUR virtual capital and tracks real market performance.
 Includes ML predictions and Markowitz portfolio optimization.
+Imports for scipy/sklearn are lazy to reduce startup memory on small instances.
 """
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
-from scipy.optimize import minimize
-from sklearn.linear_model import LinearRegression
 from pydantic import BaseModel
 from typing import Optional
+
+
+def _get_minimize():
+    from scipy.optimize import minimize as _minimize
+    return _minimize
+
+
+def _get_linear_regression():
+    from sklearn.linear_model import LinearRegression as _LR
+    return _LR
 
 
 # In-memory storage for baskets
@@ -103,7 +112,7 @@ def optimize_markowitz(returns: np.ndarray, risk_free_rate: float = 0.02) -> np.
     bounds = tuple((0.02, 0.5) for _ in range(n_assets))
     initial = np.array([1.0 / n_assets] * n_assets)
 
-    result = minimize(neg_sharpe, initial, method="SLSQP", bounds=bounds, constraints=constraints)
+    result = _get_minimize()(neg_sharpe, initial, method="SLSQP", bounds=bounds, constraints=constraints)
 
     if result.success:
         return result.x
@@ -120,7 +129,7 @@ def ml_predict_weights(returns: np.ndarray) -> np.ndarray:
         X = np.arange(len(asset_returns)).reshape(-1, 1)
         y = asset_returns
 
-        model = LinearRegression()
+        model = _get_linear_regression()()
         model.fit(X, y)
         next_return = model.predict([[len(asset_returns)]])[0]
         predicted_returns.append(next_return)
@@ -149,7 +158,7 @@ def predict_prices(symbol: str, days: int = 30) -> dict:
         closes = hist["Close"].values
         X = np.arange(len(closes)).reshape(-1, 1)
 
-        model = LinearRegression()
+        model = _get_linear_regression()()
         model.fit(X, closes)
 
         future_X = np.arange(len(closes), len(closes) + days).reshape(-1, 1)
