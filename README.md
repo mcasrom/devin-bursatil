@@ -9,6 +9,7 @@ Aplicacion fullstack de gestion de cestas de inversion virtuales con datos reale
 - **Prediccion ML**: Prediccion de precios a 30 dias usando regresion lineal sobre datos historicos
 - **Optimizacion de Carteras**: Analisis Markowitz (frontera eficiente), comparacion de estrategias (equal weight, Markowitz, ML)
 - **Alertas de Precio**: Configura alertas para cuando un valor supere o baje de un precio objetivo
+- **Base de Datos SQLite**: Las cestas y alertas se guardan permanentemente, puedes volver cualquier dia y tus datos estaran ahi
 
 ## Tecnologias
 
@@ -45,7 +46,7 @@ cd devin-bursatil
 
 ```bash
 cd devin-bursatil-backend
-poetry install
+poetry install --no-root
 ```
 
 ### 3. Configurar el Frontend
@@ -149,7 +150,8 @@ devin-bursatil/
 ├── devin-bursatil-backend/
 │   ├── app/
 │   │   ├── main.py          # API endpoints FastAPI
-│   │   └── baskets.py       # ML, optimizacion, cestas virtuales
+│   │   ├── baskets.py       # ML, optimizacion, cestas virtuales
+│   │   └── database.py      # SQLite persistencia
 │   └── pyproject.toml       # Dependencias Python
 ├── devin-bursatil-frontend/
 │   ├── src/

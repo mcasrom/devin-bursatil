@@ -2,19 +2,29 @@
 Virtual investment baskets module.
 Each basket starts with 200 EUR virtual capital and tracks real market performance.
 Includes ML predictions and Markowitz portfolio optimization.
+Imports for scipy/sklearn are lazy to reduce startup memory on small instances.
 """
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
-from scipy.optimize import minimize
-from sklearn.linear_model import LinearRegression
 from pydantic import BaseModel
 from typing import Optional
 
 
-# In-memory storage for baskets
-baskets_db: dict[str, dict] = {}
-basket_counter = 0
+def _get_minimize():
+    from scipy.optimize import minimize as _minimize
+    return _minimize
+
+
+def _get_linear_regression():
+    from sklearn.linear_model import LinearRegression as _LR
+    return _LR
+
+
+from app.database import (
+    db_next_basket_id, db_save_basket, db_get_all_baskets,
+    db_get_basket, db_delete_basket,
+)
 
 # Predefined stock universes
 IBEX_STOCKS = {
@@ -103,7 +113,7 @@ def optimize_markowitz(returns: np.ndarray, risk_free_rate: float = 0.02) -> np.
     bounds = tuple((0.02, 0.5) for _ in range(n_assets))
     initial = np.array([1.0 / n_assets] * n_assets)
 
-    result = minimize(neg_sharpe, initial, method="SLSQP", bounds=bounds, constraints=constraints)
+    result = _get_minimize()(neg_sharpe, initial, method="SLSQP", bounds=bounds, constraints=constraints)
 
     if result.success:
         return result.x
@@ -120,7 +130,7 @@ def ml_predict_weights(returns: np.ndarray) -> np.ndarray:
         X = np.arange(len(asset_returns)).reshape(-1, 1)
         y = asset_returns
 
-        model = LinearRegression()
+        model = _get_linear_regression()()
         model.fit(X, y)
         next_return = model.predict([[len(asset_returns)]])[0]
         predicted_returns.append(next_return)
@@ -149,7 +159,7 @@ def predict_prices(symbol: str, days: int = 30) -> dict:
         closes = hist["Close"].values
         X = np.arange(len(closes)).reshape(-1, 1)
 
-        model = LinearRegression()
+        model = _get_linear_regression()()
         model.fit(X, closes)
 
         future_X = np.arange(len(closes), len(closes) + days).reshape(-1, 1)
@@ -183,9 +193,7 @@ def predict_prices(symbol: str, days: int = 30) -> dict:
 
 def create_basket(config: BasketCreate) -> dict:
     """Create a virtual investment basket."""
-    global basket_counter
-    basket_counter += 1
-    basket_id = f"basket_{basket_counter}"
+    basket_id = db_next_basket_id()
 
     symbols = config.symbols
     returns_data, valid_symbols = get_historical_returns(symbols)
@@ -230,16 +238,15 @@ def create_basket(config: BasketCreate) -> dict:
         "created_at": datetime.now().isoformat(),
     }
 
-    baskets_db[basket_id] = basket
+    db_save_basket(basket)
     return basket
 
 
 def get_basket_performance(basket_id: str) -> dict:
     """Calculate current performance of a basket."""
-    if basket_id not in baskets_db:
+    basket = db_get_basket(basket_id)
+    if basket is None:
         return {"error": "Basket not found"}
-
-    basket = baskets_db[basket_id]
     total_current = 0.0
     total_cost = 0.0
     position_details = []
@@ -291,10 +298,9 @@ def get_basket_performance(basket_id: str) -> dict:
 
 def get_basket_history(basket_id: str, period: str = "1mo") -> dict:
     """Get historical performance of a basket over time."""
-    if basket_id not in baskets_db:
+    basket = db_get_basket(basket_id)
+    if basket is None:
         return {"error": "Basket not found"}
-
-    basket = baskets_db[basket_id]
     import pandas as pd
 
     all_data = {}
