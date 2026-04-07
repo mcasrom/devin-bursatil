@@ -78,7 +78,7 @@ function App() {
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [newBasketName, setNewBasketName] = useState('')
   const [newBasketMarket, setNewBasketMarket] = useState('mixed')
-  const [newBasketStrategy, setNewBasketStrategy] = useState('optimized')
+  const [newBasketStrategy, setNewBasketStrategy] = useState('equal')
   const [selectedStocks, setSelectedStocks] = useState<string[]>([])
   const [alertSymbol, setAlertSymbol] = useState('')
   const [alertPrice, setAlertPrice] = useState('')
